@@ -1,0 +1,20 @@
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def webhook_receiver():
+    # Get JSON payload from Catalyst Center webhook
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid or missing JSON payload"}), 400
+
+    # Log or process the webhook data as needed
+    print("Received webhook data:", data)
+
+    # Respond to Catalyst Center to acknowledge receipt
+    return jsonify({"status": "Webhook received"}), 200
+
+if __name__ == '__main__':
+    # Run the Flask server on port 5000 (or any port you prefer)
+    app.run(host='0.0.0.0', port=5000)
