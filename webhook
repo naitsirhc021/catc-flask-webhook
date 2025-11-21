@@ -11,8 +11,8 @@ app = Flask(__name__)
 
 # ISE Configuration
 ISE_HOST = "192.168.101.3"
-ISE_USERNAME = "your_ise_username"  # Replace with your ISE admin username
-ISE_PASSWORD = "your_ise_password"  # Replace with your ISE admin password
+ISE_USERNAME = "admin"  # Replace with your ISE admin username
+ISE_PASSWORD = "S1ngt3l@ISE"  # Replace with your ISE admin password
 
 def query_ise_session(device_ip):
     """
