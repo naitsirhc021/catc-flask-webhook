@@ -48,6 +48,42 @@ def query_ise_session(device_ip):
         print(f"Error querying ISE session: {e}")
         return None
 
+def extract_session_info(ise_data):
+    """
+    Extract nas_port_id, network_device_name, and user_name from ISE session data
+    """
+    sessions = []
+    
+    try:
+        # Navigate to the session data - structure may vary
+        # Common paths: sessionParameters or sessions
+        if 'sessionParameters' in ise_data:
+            session_list = ise_data['sessionParameters']
+            
+            # Handle single session or multiple sessions
+            if isinstance(session_list, dict):
+                session_list = [session_list]
+            elif isinstance(session_list, list):
+                pass
+            else:
+                return sessions
+                
+            for session in session_list:
+                nas_port_id = session.get('nas_port_id', 'N/A')
+                network_device_name = session.get('network_device_name', 'N/A')
+                user_name = session.get('user_name', 'N/A')
+                
+                sessions.append({
+                    'nas_port_id': nas_port_id,
+                    'network_device_name': network_device_name,
+                    'user_name': user_name
+                })
+        
+    except Exception as e:
+        print(f"Error extracting session info: {e}")
+    
+    return sessions
+
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
     # Get JSON payload from Catalyst Center webhook
@@ -81,17 +117,37 @@ def webhook_receiver():
             ise_session_data = query_ise_session(device)
             
             if ise_session_data:
-                print("\nISE Session Data Retrieved (prettified):")
-                print(json.dumps(ise_session_data, indent=4, sort_keys=True))
+                # Indicate success
+                print("\n✓ ISE API Request Succeeded!")
                 print("=" * 80)
                 
-                # Return response with extracted data and ISE session info
-                return jsonify({
-                    "status": "Webhook received",
-                    "assurance_issue_details": assurance_issue_details,
-                    "device": device,
-                    "ise_session_data": ise_session_data
-                }), 200
+                # Extract specific fields
+                sessions = extract_session_info(ise_session_data)
+                
+                if sessions:
+                    for idx, session in enumerate(sessions, 1):
+                        print(f"\nSession {idx}:")
+                        print(f"nas_port_id: {session['nas_port_id']}")
+                        print(f"network_device_name: {session['network_device_name']}")
+                        print(f"user_name: {session['user_name']}")
+                        print(f"\nUser \"{session['user_name']}\" has connected \"{session['network_device_name']}_{session['nas_port_id']}\"")
+                        print("-" * 80)
+                    
+                    # Return response
+                    return jsonify({
+                        "status": "Webhook received and ISE query succeeded",
+                        "assurance_issue_details": assurance_issue_details,
+                        "device": device,
+                        "sessions": sessions
+                    }), 200
+                else:
+                    print("No session information found in ISE response")
+                    return jsonify({
+                        "status": "Webhook received",
+                        "assurance_issue_details": assurance_issue_details,
+                        "device": device,
+                        "error": "No session information found"
+                    }), 200
             else:
                 print("Failed to retrieve ISE session data")
                 return jsonify({
