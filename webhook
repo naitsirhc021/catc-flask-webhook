@@ -1,7 +1,45 @@
 from flask import Flask, request, jsonify
 import json
+import requests
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
+
+# ISE Configuration
+ISE_HOST = "192.168.101.3"
+ISE_USERNAME = "your_ise_username"  # Replace with your ISE admin username
+ISE_PASSWORD = "your_ise_password"  # Replace with your ISE admin password
+
+def query_ise_session(device_ip):
+    """
+    Query ISE for session information based on device IP address
+    """
+    url = f"https://{ISE_HOST}/admin/API/mnt/Session/IPAddress/{device_ip}"
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.get(
+            url,
+            auth=(ISE_USERNAME, ISE_PASSWORD),
+            headers=headers,
+            verify=False
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error querying ISE: {e}")
+        print(f"Response: {e.response.text if e.response else 'No response'}")
+        return None
+    except Exception as e:
+        print(f"Error querying ISE session: {e}")
+        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
@@ -30,15 +68,38 @@ def webhook_receiver():
             
         if device:
             print(f"Device: {device}\n")
+            
+            # Query ISE API with the device IP
+            print(f"Querying ISE for session information on device: {device}")
+            ise_session_data = query_ise_session(device)
+            
+            if ise_session_data:
+                print("\nISE Session Data Retrieved (prettified):")
+                print(json.dumps(ise_session_data, indent=4, sort_keys=True))
+                print("=" * 80)
+                
+                # Return response with extracted data and ISE session info
+                return jsonify({
+                    "status": "Webhook received",
+                    "assurance_issue_details": assurance_issue_details,
+                    "device": device,
+                    "ise_session_data": ise_session_data
+                }), 200
+            else:
+                print("Failed to retrieve ISE session data")
+                return jsonify({
+                    "status": "Webhook received",
+                    "assurance_issue_details": assurance_issue_details,
+                    "device": device,
+                    "error": "Failed to retrieve ISE session data"
+                }), 500
         else:
             print("Device: Not found\n")
-        
-        # Return response with extracted data
-        return jsonify({
-            "status": "Webhook received",
-            "assurance_issue_details": assurance_issue_details,
-            "device": device
-        }), 200
+            return jsonify({
+                "status": "Webhook received",
+                "assurance_issue_details": assurance_issue_details,
+                "error": "Device field not found"
+            }), 200
     else:
         print("\n'details' field not found in webhook data\n")
         return jsonify({
