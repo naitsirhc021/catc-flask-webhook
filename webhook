@@ -3,6 +3,7 @@ import json
 import requests
 import urllib3
 import xmltodict
+import re
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -11,8 +12,8 @@ app = Flask(__name__)
 
 # ISE Configuration
 ISE_HOST = "192.168.101.3"
-ISE_USERNAME = "admin"  # Replace with your ISE admin username
-ISE_PASSWORD = "S1ngt3l@ISE"  # Replace with your ISE admin password
+ISE_USERNAME = "your_ise_username"  # Replace with your ISE admin username
+ISE_PASSWORD = "your_ise_password"  # Replace with your ISE admin password
 
 def query_ise_session(device_ip):
     """
@@ -56,8 +57,9 @@ def format_interface_name(interface_name):
     if not interface_name or interface_name == 'N/A':
         return interface_name
     
-    # Replace GigabitEthernet with Gi
-    interface_name = re.sub(r'^GigabitEthernet', 'Gi', interface_name)
+    # Replace GigabitEthernet with Gi using string replace (no regex needed)
+    if interface_name.startswith('GigabitEthernet'):
+        interface_name = interface_name.replace('GigabitEthernet', 'Gi', 1)
     
     return interface_name
 
