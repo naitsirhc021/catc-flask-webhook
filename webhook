@@ -32,9 +32,9 @@ def get_dnac_token():
         print(f"Error getting authentication token: {e}")
         return None
 
-def query_client_details(device_ip, token):
+def query_client_details(device_id, token):
     """
-    Query Catalyst Center for client details based on device IP
+    Query Catalyst Center for client details based on device ID
     """
     url = f"https://{DNAC_HOST}/dna/intent/api/v1/client-detail"
     
@@ -45,7 +45,7 @@ def query_client_details(device_ip, token):
     
     params = {
         "connectionType": "WIRED",
-        "deviceId": device_ip
+        "deviceId": device_id
     }
     
     try:
@@ -81,10 +81,10 @@ def webhook_receiver():
             
             # Check if the value contains "User defined issue has been triggered for"
             if isinstance(assurance_details, str) and "User defined issue has been triggered for" in assurance_details:
-                # Extract and return the Device value and assurance details
-                if 'Device' in data:
-                    device_ip = data['Device']
-                    print(f"Device IP extracted: {device_ip}")
+                # Extract deviceId from the webhook
+                if 'deviceId' in data:
+                    device_id = data['deviceId']
+                    print(f"Device ID extracted: {device_id}")
                     print(f"Assurance Issue Details: {assurance_details}")
                     
                     # Get authentication token
@@ -92,35 +92,35 @@ def webhook_receiver():
                     if not token:
                         return jsonify({
                             "status": "Webhook received",
-                            "device": device_ip,
+                            "deviceId": device_id,
                             "assurance_issue_details": assurance_details,
                             "error": "Failed to authenticate with Catalyst Center"
                         }), 500
                     
-                    # Query client details from Catalyst Center
-                    client_details = query_client_details(device_ip, token)
+                    # Query client details from Catalyst Center using deviceId
+                    client_details = query_client_details(device_id, token)
                     
                     if client_details:
                         print(f"Client details retrieved: {client_details}")
                         return jsonify({
                             "status": "Webhook received",
-                            "device": device_ip,
+                            "deviceId": device_id,
                             "assurance_issue_details": assurance_details,
                             "client_details": client_details
                         }), 200
                     else:
                         return jsonify({
                             "status": "Webhook received",
-                            "device": device_ip,
+                            "deviceId": device_id,
                             "assurance_issue_details": assurance_details,
                             "error": "Failed to retrieve client details from Catalyst Center"
                         }), 500
                 else:
-                    print("Device field not found in webhook data")
+                    print("deviceId field not found in webhook data")
                     print(f"Assurance Issue Details: {assurance_details}")
                     return jsonify({
                         "status": "Webhook received",
-                        "error": "Device field not found",
+                        "error": "deviceId field not found",
                         "assurance_issue_details": assurance_details
                     }), 200
 
