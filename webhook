@@ -48,6 +48,19 @@ def query_ise_session(device_ip):
         print(f"Error querying ISE session: {e}")
         return None
 
+def format_interface_name(interface_name):
+    """
+    Format interface name to shorten GigabitEthernet to Gi
+    Example: GigabitEthernet1/0/1 -> Gi1/0/1
+    """
+    if not interface_name or interface_name == 'N/A':
+        return interface_name
+    
+    # Replace GigabitEthernet with Gi
+    interface_name = re.sub(r'^GigabitEthernet', 'Gi', interface_name)
+    
+    return interface_name
+
 def extract_session_info(ise_data):
     """
     Extract nas_port_id, network_device_name, and user_name from ISE session data
@@ -73,8 +86,11 @@ def extract_session_info(ise_data):
                 network_device_name = session.get('network_device_name', 'N/A')
                 user_name = session.get('user_name', 'N/A')
                 
+                # Format the nas_port_id
+                formatted_nas_port_id = format_interface_name(nas_port_id)
+                
                 sessions.append({
-                    'nas_port_id': nas_port_id,
+                    'nas_port_id': formatted_nas_port_id,
                     'network_device_name': network_device_name,
                     'user_name': user_name
                 })
