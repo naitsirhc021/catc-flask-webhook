@@ -1,6 +1,65 @@
 from flask import Flask, request, jsonify
+import requests
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
+
+# Catalyst Center Configuration
+DNAC_HOST = "192.168.101.2"
+DNAC_USERNAME = "pocadmin"  # Replace with your Catalyst Center username
+DNAC_PASSWORD = "P@ssw0rd"  # Replace with your Catalyst Center password
+
+def get_dnac_token():
+    """
+    Authenticate to Catalyst Center and get authentication token
+    """
+    url = f"https://{DNAC_HOST}/dna/system/api/v1/auth/token"
+    
+    try:
+        response = requests.post(
+            url,
+            auth=(DNAC_USERNAME, DNAC_PASSWORD),
+            headers={"Content-Type": "application/json"},
+            verify=False
+        )
+        response.raise_for_status()
+        token = response.json()["Token"]
+        return token
+    except Exception as e:
+        print(f"Error getting authentication token: {e}")
+        return None
+
+def query_client_details(device_ip, token):
+    """
+    Query Catalyst Center for client details based on device IP
+    """
+    url = f"https://{DNAC_HOST}/dna/intent/api/v1/client-detail"
+    
+    headers = {
+        "X-Auth-Token": token,
+        "Content-Type": "application/json"
+    }
+    
+    params = {
+        "connectionType": "WIRED",
+        "deviceId": device_ip
+    }
+    
+    try:
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            verify=False
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error querying client details: {e}")
+        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
@@ -22,19 +81,47 @@ def webhook_receiver():
             
             # Check if the value contains "User defined issue has been triggered for"
             if isinstance(assurance_details, str) and "User defined issue has been triggered for" in assurance_details:
-                # Extract and return the Device value
+                # Extract and return the Device value and assurance details
                 if 'Device' in data:
-                    device = data['Device']
-                    print(f"Device extracted: {device}")
-                    return jsonify({
-                        "status": "Webhook received",
-                        "device": device
-                    }), 200
+                    device_ip = data['Device']
+                    print(f"Device IP extracted: {device_ip}")
+                    print(f"Assurance Issue Details: {assurance_details}")
+                    
+                    # Get authentication token
+                    token = get_dnac_token()
+                    if not token:
+                        return jsonify({
+                            "status": "Webhook received",
+                            "device": device_ip,
+                            "assurance_issue_details": assurance_details,
+                            "error": "Failed to authenticate with Catalyst Center"
+                        }), 500
+                    
+                    # Query client details from Catalyst Center
+                    client_details = query_client_details(device_ip, token)
+                    
+                    if client_details:
+                        print(f"Client details retrieved: {client_details}")
+                        return jsonify({
+                            "status": "Webhook received",
+                            "device": device_ip,
+                            "assurance_issue_details": assurance_details,
+                            "client_details": client_details
+                        }), 200
+                    else:
+                        return jsonify({
+                            "status": "Webhook received",
+                            "device": device_ip,
+                            "assurance_issue_details": assurance_details,
+                            "error": "Failed to retrieve client details from Catalyst Center"
+                        }), 500
                 else:
                     print("Device field not found in webhook data")
+                    print(f"Assurance Issue Details: {assurance_details}")
                     return jsonify({
                         "status": "Webhook received",
-                        "error": "Device field not found"
+                        "error": "Device field not found",
+                        "assurance_issue_details": assurance_details
                     }), 200
 
     # Default response for other webhooks
