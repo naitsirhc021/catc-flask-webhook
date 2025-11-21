@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import json
 import requests
 import urllib3
+import xmltodict
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -20,8 +21,8 @@ def query_ise_session(device_ip):
     url = f"https://{ISE_HOST}/admin/API/mnt/Session/IPAddress/{device_ip}"
     
     headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Accept": "application/xml",
+        "Content-Type": "application/xml"
     }
     
     try:
@@ -32,9 +33,15 @@ def query_ise_session(device_ip):
             verify=False
         )
         response.raise_for_status()
-        return response.json()
+        
+        # Convert XML response to dictionary for easier handling
+        xml_data = response.text
+        dict_data = xmltodict.parse(xml_data)
+        return dict_data
+        
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error querying ISE: {e}")
+        print(f"Status Code: {e.response.status_code if e.response else 'Unknown'}")
         print(f"Response: {e.response.text if e.response else 'No response'}")
         return None
     except Exception as e:
