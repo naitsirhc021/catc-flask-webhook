@@ -9,12 +9,37 @@ def webhook_receiver():
     if not data:
         return jsonify({"error": "Invalid or missing JSON payload"}), 400
 
-    # Log or process the webhook data as needed
+    # Log the full webhook data
     print("Received webhook data:", data)
 
-    # Respond to Catalyst Center to acknowledge receipt
+    # Check if 'details' exists in the webhook data
+    if 'details' in data:
+        details = data['details']
+        
+        # Check for "Assurance Issue Details" key
+        if 'Assurance Issue Details' in details:
+            assurance_details = details['Assurance Issue Details']
+            
+            # Check if the value contains "User defined issue has been triggered for"
+            if isinstance(assurance_details, str) and "User defined issue has been triggered for" in assurance_details:
+                # Extract and return the Device value
+                if 'Device' in data:
+                    device = data['Device']
+                    print(f"Device extracted: {device}")
+                    return jsonify({
+                        "status": "Webhook received",
+                        "device": device
+                    }), 200
+                else:
+                    print("Device field not found in webhook data")
+                    return jsonify({
+                        "status": "Webhook received",
+                        "error": "Device field not found"
+                    }), 200
+
+    # Default response for other webhooks
     return jsonify({"status": "Webhook received"}), 200
 
 if __name__ == '__main__':
-    # Run the Flask server on port 5000 (or any port you prefer)
-    app.run(host='0.0.0.0', port=5000)
+    # Run the Flask server with HTTPS using adhoc SSL (self-signed certificate)
+    app.run(host='0.0.0.0', port=5000, ssl_context='adhoc')
