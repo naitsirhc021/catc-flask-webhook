@@ -1,65 +1,7 @@
 from flask import Flask, request, jsonify
-import requests
-import urllib3
-
-# Disable SSL warnings for self-signed certificates
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import json
 
 app = Flask(__name__)
-
-# Catalyst Center Configuration
-DNAC_HOST = "192.168.101.2"
-DNAC_USERNAME = "pocadmin"  # Replace with your Catalyst Center username
-DNAC_PASSWORD = "P@ssw0rd"  # Replace with your Catalyst Center password
-
-def get_dnac_token():
-    """
-    Authenticate to Catalyst Center and get authentication token
-    """
-    url = f"https://{DNAC_HOST}/dna/system/api/v1/auth/token"
-    
-    try:
-        response = requests.post(
-            url,
-            auth=(DNAC_USERNAME, DNAC_PASSWORD),
-            headers={"Content-Type": "application/json"},
-            verify=False
-        )
-        response.raise_for_status()
-        token = response.json()["Token"]
-        return token
-    except Exception as e:
-        print(f"Error getting authentication token: {e}")
-        return None
-
-def query_client_details(device_id, token):
-    """
-    Query Catalyst Center for client details based on device ID
-    """
-    url = f"https://{DNAC_HOST}/dna/intent/api/v1/client-detail"
-    
-    headers = {
-        "X-Auth-Token": token,
-        "Content-Type": "application/json"
-    }
-    
-    params = {
-        "connectionType": "WIRED",
-        "deviceId": device_id
-    }
-    
-    try:
-        response = requests.get(
-            url,
-            headers=headers,
-            params=params,
-            verify=False
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"Error querying client details: {e}")
-        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
@@ -68,64 +10,41 @@ def webhook_receiver():
     if not data:
         return jsonify({"error": "Invalid or missing JSON payload"}), 400
 
-    # Log the full webhook data
-    print("Received webhook data:", data)
+    # 1. Print the webhook (prettified)
+    print("=" * 80)
+    print("Received webhook data (prettified):")
+    print(json.dumps(data, indent=4, sort_keys=True))
+    print("=" * 80)
 
-    # Check if 'details' exists in the webhook data
+    # 2. Get "Assurance Issue Details" and "Device" from "details"
     if 'details' in data:
         details = data['details']
         
-        # Check for "Assurance Issue Details" key
-        if 'Assurance Issue Details' in details:
-            assurance_details = details['Assurance Issue Details']
+        assurance_issue_details = details.get('Assurance Issue Details', None)
+        device = details.get('Device', None)
+        
+        if assurance_issue_details:
+            print(f"\nAssurance Issue Details: {assurance_issue_details}")
+        else:
+            print("\nAssurance Issue Details: Not found")
             
-            # Check if the value contains "User defined issue has been triggered for"
-            if isinstance(assurance_details, str) and "User defined issue has been triggered for" in assurance_details:
-                # Extract deviceId from the webhook
-                if 'deviceId' in data:
-                    device_id = data['deviceId']
-                    print(f"Device ID extracted: {device_id}")
-                    print(f"Assurance Issue Details: {assurance_details}")
-                    
-                    # Get authentication token
-                    token = get_dnac_token()
-                    if not token:
-                        return jsonify({
-                            "status": "Webhook received",
-                            "deviceId": device_id,
-                            "assurance_issue_details": assurance_details,
-                            "error": "Failed to authenticate with Catalyst Center"
-                        }), 500
-                    
-                    # Query client details from Catalyst Center using deviceId
-                    client_details = query_client_details(device_id, token)
-                    
-                    if client_details:
-                        print(f"Client details retrieved: {client_details}")
-                        return jsonify({
-                            "status": "Webhook received",
-                            "deviceId": device_id,
-                            "assurance_issue_details": assurance_details,
-                            "client_details": client_details
-                        }), 200
-                    else:
-                        return jsonify({
-                            "status": "Webhook received",
-                            "deviceId": device_id,
-                            "assurance_issue_details": assurance_details,
-                            "error": "Failed to retrieve client details from Catalyst Center"
-                        }), 500
-                else:
-                    print("deviceId field not found in webhook data")
-                    print(f"Assurance Issue Details: {assurance_details}")
-                    return jsonify({
-                        "status": "Webhook received",
-                        "error": "deviceId field not found",
-                        "assurance_issue_details": assurance_details
-                    }), 200
-
-    # Default response for other webhooks
-    return jsonify({"status": "Webhook received"}), 200
+        if device:
+            print(f"Device: {device}\n")
+        else:
+            print("Device: Not found\n")
+        
+        # Return response with extracted data
+        return jsonify({
+            "status": "Webhook received",
+            "assurance_issue_details": assurance_issue_details,
+            "device": device
+        }), 200
+    else:
+        print("\n'details' field not found in webhook data\n")
+        return jsonify({
+            "status": "Webhook received",
+            "error": "'details' field not found"
+        }), 200
 
 if __name__ == '__main__':
     # Run the Flask server with HTTPS using adhoc SSL (self-signed certificate)
