@@ -15,6 +15,11 @@ ISE_HOST = "192.168.101.3"
 ISE_USERNAME = "your_ise_username"  # Replace with your ISE admin username
 ISE_PASSWORD = "your_ise_password"  # Replace with your ISE admin password
 
+# Deskey API Configuration
+DESKEY_API_URL = "https://deskey.optusdart.com/api/deskey/singtel/cisco/webhook"
+DESKEY_API_KEY = "QIYGBFDSJKL"
+DESKEY_API_SECRET = "fGHji9-2KiOPs5-DfjHGf3"
+
 def query_ise_session(device_ip):
     """
     Query ISE for session information based on device IP address
@@ -57,7 +62,7 @@ def format_interface_name(interface_name):
     if not interface_name or interface_name == 'N/A':
         return interface_name
     
-    # Replace GigabitEthernet with Gi using string replace (no regex needed)
+    # Replace GigabitEthernet with Gi using string replace
     if interface_name.startswith('GigabitEthernet'):
         interface_name = interface_name.replace('GigabitEthernet', 'Gi', 1)
     
@@ -91,16 +96,64 @@ def extract_session_info(ise_data):
                 # Format the nas_port_id
                 formatted_nas_port_id = format_interface_name(nas_port_id)
                 
+                # Create merged switchPortId variable
+                switch_port_id = f"{network_device_name}_{formatted_nas_port_id}"
+                
                 sessions.append({
                     'nas_port_id': formatted_nas_port_id,
                     'network_device_name': network_device_name,
-                    'user_name': user_name
+                    'user_name': user_name,
+                    'switch_port_id': switch_port_id
                 })
         
     except Exception as e:
         print(f"Error extracting session info: {e}")
     
     return sessions
+
+def call_deskey_api(username, switch_port_id):
+    """
+    Call the Deskey API with username and switchPortId
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "x-ds-api-key": DESKEY_API_KEY,
+        "x-ds-api-secret": DESKEY_API_SECRET
+    }
+    
+    payload = {
+        "username": username,
+        "switchPortId": switch_port_id
+    }
+    
+    try:
+        print(f"\nCalling Deskey API...")
+        print(f"URL: {DESKEY_API_URL}")
+        print(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        response = requests.post(
+            DESKEY_API_URL,
+            headers=headers,
+            json=payload,
+            verify=False
+        )
+        response.raise_for_status()
+        
+        print(f"\n✓ Deskey API call succeeded!")
+        print(f"Response Status: {response.status_code}")
+        print(f"Response: {response.text}")
+        print("=" * 80)
+        
+        return response.json() if response.text else {"status": "success"}
+        
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error calling Deskey API: {e}")
+        print(f"Status Code: {e.response.status_code if e.response else 'Unknown'}")
+        print(f"Response: {e.response.text if e.response else 'No response'}")
+        return None
+    except Exception as e:
+        print(f"Error calling Deskey API: {e}")
+        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
@@ -130,6 +183,11 @@ def webhook_receiver():
         if device:
             print(f"Device: {device}\n")
             
+            # Add 1 minute delay before querying ISE
+            print("Waiting 1 minute before querying ISE...")
+            time.sleep(60)  # 60 seconds = 1 minute
+            print("Delay complete. Proceeding with ISE query.\n")
+            
             # Query ISE API with the device IP
             print(f"Querying ISE for session information on device: {device}")
             ise_session_data = query_ise_session(device)
@@ -148,15 +206,23 @@ def webhook_receiver():
                         print(f"nas_port_id: {session['nas_port_id']}")
                         print(f"network_device_name: {session['network_device_name']}")
                         print(f"user_name: {session['user_name']}")
+                        print(f"switch_port_id: {session['switch_port_id']}")
                         print(f"\nUser \"{session['user_name']}\" has connected \"{session['network_device_name']}_{session['nas_port_id']}\"")
                         print("-" * 80)
+                        
+                        # Call Deskey API for each session
+                        deskey_response = call_deskey_api(
+                            session['user_name'],
+                            session['switch_port_id']
+                        )
                     
                     # Return response
                     return jsonify({
-                        "status": "Webhook received and ISE query succeeded",
+                        "status": "Webhook received, ISE query succeeded, and Deskey API called",
                         "assurance_issue_details": assurance_issue_details,
                         "device": device,
-                        "sessions": sessions
+                        "sessions": sessions,
+                        "deskey_api_response": deskey_response
                     }), 200
                 else:
                     print("No session information found in ISE response")
