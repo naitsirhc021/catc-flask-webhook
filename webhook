@@ -12,8 +12,8 @@ app = Flask(__name__)
 
 # ISE Configuration
 ISE_HOST = "192.168.101.3"
-ISE_USERNAME = "your_ise_username"  # Replace with your ISE admin username
-ISE_PASSWORD = "your_ise_password"  # Replace with your ISE admin password
+ISE_USERNAME = "admin"  # Replace with your ISE admin username
+ISE_PASSWORD = "S1ngt3l@ISE"  # Replace with your ISE admin password
 
 # Deskey API Configuration
 DESKEY_API_URL = "https://deskey.optusdart.com/api/deskey/singtel/cisco/webhook"
@@ -135,25 +135,35 @@ def call_deskey_api(username, switch_port_id):
             DESKEY_API_URL,
             headers=headers,
             json=payload,
-            verify=False
+            verify=False,
+            timeout=30
         )
         response.raise_for_status()
         
         print(f"\n✓ Deskey API call succeeded!")
         print(f"Response Status: {response.status_code}")
-        print(f"Response: {response.text}")
+        print(f"Response Content Type: {response.headers.get('Content-Type', 'Unknown')}")
+        print(f"Response Text: {response.text}")
         print("=" * 80)
         
-        return response.json() if response.text else {"status": "success"}
+        # Handle empty or non-JSON responses
+        if response.text and response.text.strip():
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                print("Response is not valid JSON, returning raw text")
+                return {"status": "success", "response": response.text}
+        else:
+            return {"status": "success", "message": "Empty response from API"}
         
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error calling Deskey API: {e}")
         print(f"Status Code: {e.response.status_code if e.response else 'Unknown'}")
         print(f"Response: {e.response.text if e.response else 'No response'}")
-        return None
+        return {"status": "error", "message": str(e)}
     except Exception as e:
         print(f"Error calling Deskey API: {e}")
-        return None
+        return {"status": "error", "message": str(e)}
 
 @app.route('/webhook', methods=['POST'])
 def webhook_receiver():
@@ -201,27 +211,29 @@ def webhook_receiver():
                 sessions = extract_session_info(ise_session_data)
                 
                 if sessions:
-                    for idx, session in enumerate(sessions, 1):
-                        print(f"\nSession {idx}:")
-                        print(f"nas_port_id: {session['nas_port_id']}")
-                        print(f"network_device_name: {session['network_device_name']}")
-                        print(f"user_name: {session['user_name']}")
-                        print(f"switch_port_id: {session['switch_port_id']}")
-                        print(f"\nUser \"{session['user_name']}\" has connected \"{session['network_device_name']}_{session['nas_port_id']}\"")
-                        print("-" * 80)
-                        
-                        # Call Deskey API for each session
-                        deskey_response = call_deskey_api(
-                            session['user_name'],
-                            session['switch_port_id']
-                        )
+                    # Only process the first session (not looping through all)
+                    session = sessions[0]
+                    
+                    print(f"\nSession Information:")
+                    print(f"nas_port_id: {session['nas_port_id']}")
+                    print(f"network_device_name: {session['network_device_name']}")
+                    print(f"user_name: {session['user_name']}")
+                    print(f"switch_port_id: {session['switch_port_id']}")
+                    print(f"\nUser \"{session['user_name']}\" has connected \"{session['network_device_name']}_{session['nas_port_id']}\"")
+                    print("-" * 80)
+                    
+                    # Call Deskey API once for the first session
+                    deskey_response = call_deskey_api(
+                        session['user_name'],
+                        session['switch_port_id']
+                    )
                     
                     # Return response
                     return jsonify({
                         "status": "Webhook received, ISE query succeeded, and Deskey API called",
                         "assurance_issue_details": assurance_issue_details,
                         "device": device,
-                        "sessions": sessions,
+                        "session": session,
                         "deskey_api_response": deskey_response
                     }), 200
                 else:
